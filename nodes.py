@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import random
+import re
 import statistics
 import tempfile
 import time
@@ -139,22 +140,30 @@ def _stop(proc: asyncio.subprocess.Process | None) -> None:
 async def harvest(cfg: dict, base_port: int) -> tuple[list[str], asyncio.subprocess.Process | None]:
     """(working local proxies, the Xray process serving them). Empty list when nothing worked."""
     v, xray = cfg["vpn"], cfg["env"]["xray_bin"]
-    sources = [s for s in (v.get("sources") or []) if isinstance(s, str) and s.strip()]
-    if not sources or not xray:
+    own = [u for u in re.split(r"[\s,]+", os.getenv("VPN_SOURCES_EXTRA", "")) if u.startswith("http")]  # secret: .env only
+    only_own = os.getenv("VPN_ONLY", "").lower() in ("1", "true", "yes") and bool(own)
+    sources = [] if only_own else [s for s in (v.get("sources") or []) if isinstance(s, str) and s.strip()]
+    if not (sources or own) or not xray:
         log.error("vpn: no sources or no xray binary")
         return [], None
-    links = await _download(sources)
-    random.shuffle(links)
-    candidates = []
-    for link in links[: int(v.get("candidates", 800))]:
+    own_links = await _download(own) if own else []
+    free_links = [l for l in (await _download(sources) if sources else []) if l not in set(own_links)]
+    random.shuffle(free_links)
+    links = own_links + free_links
+    candidates, is_own = [], []
+    for link in own_links + free_links[: int(v.get("candidates", 800))]:
         try:
             candidates.append(parse_vless(link))
+            is_own.append(link in own_links)
         except ValueError:
             continue
     with tempfile.TemporaryDirectory() as tmp:
         sem = asyncio.Semaphore(8)
         ok = await asyncio.gather(*(_xray_accepts(xray, n, Path(tmp), base_port, sem, i) for i, n in enumerate(candidates)))
-        nodes = [n for n, good in zip(candidates, ok) if good][: int(v.get("nodes", 250))]
+        acc = [(n, o) for n, good, o in zip(candidates, ok, is_own) if good]
+        n_own = sum(o for _, o in acc)
+        acc = [x for x in acc if x[1]] + [x for x in acc if not x[1]][: max(0, int(v.get("nodes", 250)) - n_own)]
+        nodes, own_flags = [n for n, _ in acc], [o for _, o in acc]
         if not nodes:
             log.warning("vpn: %d links, no node accepted by xray", len(links))
             return [], None
@@ -171,7 +180,10 @@ async def harvest(cfg: dict, base_port: int) -> tuple[list[str], asyncio.subproc
     video = cfg["youtube"].get("probe_video", "dQw4w9WgXcQ")
     sem = asyncio.Semaphore(int(v.get("probe_concurrency", 30)))
     lat = await asyncio.gather(*(_probe(base_port + i, video, max_latency, sem) for i in range(len(nodes))))
-    good = sorted((l, base_port + i) for i, l in enumerate(lat) if l is not None)[: int(v.get("keep", 150))]
+    ok_all = [(l, base_port + i, own_flags[i]) for i, l in enumerate(lat) if l is not None]
+    mine = sorted((l, p) for l, p, o in ok_all if o)
+    free = sorted((l, p) for l, p, o in ok_all if not o)
+    good = sorted(mine + free[: max(0, int(v.get("keep", 150)) - len(mine))])  # own nodes are always kept
     if not good:
         log.warning("vpn: %d nodes started, none answered YouTube", len(nodes))
         _stop(proc)

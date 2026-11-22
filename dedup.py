@@ -33,9 +33,9 @@ class SeenCache:
 class Pipeline:
     """offer(item) -> url-check batches -> sender. Known urls are dropped; a failed check drops the batch."""
 
-    def __init__(self, cfg: dict, stats, sender) -> None:
+    def __init__(self, cfg: dict, stats, sender, pool=None) -> None:
         yt = cfg["youtube"]
-        self.stats, self.sender = stats, sender
+        self.stats, self.sender, self.pool = stats, sender, pool
         self.endpoint, self.proxy = cfg["env"]["url_check_endpoint"], cfg["env"]["url_check_proxy"]
         self.batch = int(yt.get("url_check_batch", 150))
         self.attempts = max(1, int(yt.get("url_check_attempts", 1)))
@@ -54,10 +54,15 @@ class Pipeline:
             self.stats.inc("queue_drop")
         return True
 
-    async def _check(self, session: AsyncSession, urls: list[str]) -> set[str] | None:
+    def _proxy(self) -> str | None:
+        return self.pool.pick() if self.proxy == "pool" and self.pool else (self.proxy or None)
+
+    async def _check(self, urls: list[str]) -> set[str] | None:
         for _ in range(self.attempts):
+            proxy = self._proxy()
             try:
-                r = await session.post(self.endpoint, json={"urls": urls})
+                async with AsyncSession(impersonate="chrome", timeout=15, proxies={"http": proxy, "https": proxy} if proxy else None) as session:
+                    r = await session.post(self.endpoint, json={"urls": urls})
                 data = r.json() if r.status_code == 200 else None
             except Exception:  # noqa: BLE001
                 data = None
@@ -66,24 +71,22 @@ class Pipeline:
         return None
 
     async def _worker(self) -> None:
-        proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
-        async with AsyncSession(impersonate="chrome", timeout=15, proxies=proxies) as session:
-            while True:
-                batch = [await self.q.get()]
-                await asyncio.sleep(0.5)  # let a batch accumulate
-                while len(batch) < self.batch and not self.q.empty():
-                    batch.append(self.q.get_nowait())
-                known = await self._check(session, [i["url"] for i in batch])
-                if known is None:  # closed mode: unverified is not sent
-                    self.stats.inc("url_unverified", len(batch))
-                    self.stats.inc("url_check_fail")
-                    continue
-                for item in batch:
-                    if item["url"] in known:
-                        self.stats.inc("known")
-                    else:
-                        self.stats.inc("new")
-                        await self.sender.put(item)
+        while True:
+            batch = [await self.q.get()]
+            await asyncio.sleep(0.5)  # let a batch accumulate
+            while len(batch) < self.batch and not self.q.empty():
+                batch.append(self.q.get_nowait())
+            known = await self._check([i["url"] for i in batch])
+            if known is None:  # closed mode: unverified is not sent
+                self.stats.inc("url_unverified", len(batch))
+                self.stats.inc("url_check_fail")
+                continue
+            for item in batch:
+                if item["url"] in known:
+                    self.stats.inc("known")
+                else:
+                    self.stats.inc("new")
+                    await self.sender.put(item)
 
     async def run(self) -> None:
         async def purge_loop() -> None:

@@ -2,5 +2,6 @@ services:
   youtube-parser:
     build: .
     env_file: .env
-    network_mode: host   # STORE_ENDPOINT may be a local collector; Xray listens on 127.0.0.1 only
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # STORE_ENDPOINT on the host: http://host.docker.internal:PORT/path
     restart: unless-stopped

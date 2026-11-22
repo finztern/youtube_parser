@@ -24,7 +24,7 @@ async def amain() -> None:
     pool = NodePool(cfg, stats)
     hot = HotList(yt, Pacer(float(yt.get("hot_interval", 30))))
     sender = Sender(cfg, stats)
-    pipeline = Pipeline(cfg, stats, sender)
+    pipeline = Pipeline(cfg, stats, sender, pool)
     explorer = Explorer(cfg, pool, hot, pipeline, stats)
 
     tasks = [asyncio.create_task(c) for c in (pool.run(), sender.run(), pipeline.run(), stats.run(pool, hot, pipeline), explorer.housekeeping())]
