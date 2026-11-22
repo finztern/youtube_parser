@@ -18,6 +18,8 @@ def load() -> dict:
         "url_check_proxy": os.getenv("URL_CHECK_PROXY", "").strip(),
         "xray_bin": os.getenv("XRAY_BIN") or shutil.which("xray") or "",
         "log_level": os.getenv("LOG_LEVEL", "INFO").upper(),
+        "dash_host": os.getenv("DASH_HOST", "0.0.0.0").strip(),
+        "dash_port": int(os.getenv("DASH_PORT", "8090") or 0),
     }
     if not env["store_endpoint"]:
         raise SystemExit("STORE_ENDPOINT is not set (.env)")

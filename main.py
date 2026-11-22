@@ -6,6 +6,7 @@ import logging
 import signal
 
 import config
+from dashboard import Sampler, serve as serve_dashboard
 from dedup import Pipeline
 from explorer import Explorer
 from hotlist import HotList, Pacer
@@ -29,7 +30,11 @@ async def amain() -> None:
     pipeline = Pipeline(cfg, stats, sender, pool)
     explorer = Explorer(cfg, pool, hot, pipeline, stats)
 
-    tasks = [asyncio.create_task(c) for c in (pool.run(), sender.run(), pipeline.run(), stats.run(pool, hot, pipeline), explorer.housekeeping())]
+    coros = [pool.run(), sender.run(), pipeline.run(), stats.run(pool, hot, pipeline), explorer.housekeeping()]
+    if cfg["env"]["dash_port"]:
+        sampler = Sampler(stats, pool, hot, pipeline, sender)
+        coros += [sampler.run(), serve_dashboard(sampler, cfg["env"]["dash_host"], cfg["env"]["dash_port"])]
+    tasks = [asyncio.create_task(c) for c in coros]
     while not pool.proxies:  # wait for the first working generation of nodes
         await asyncio.sleep(2)
     await explorer.seed()
