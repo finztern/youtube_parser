@@ -1,0 +1,6 @@
+services:
+  youtube-parser:
+    build: .
+    env_file: .env
+    network_mode: host   # STORE_ENDPOINT may be a local collector; Xray listens on 127.0.0.1 only
+    restart: unless-stopped

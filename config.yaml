@@ -1,0 +1,35 @@
+youtube:
+  workers: 100
+  hot_interval: 30          # seconds between polls of one hot video
+  hot_min_gain: 1.0         # video stays hot while it gives >= this many new comments per poll
+  explore_share: 0.7
+  max_hot_videos: 2000
+  max_videos: 100000
+  max_pages: 3
+  max_age_hours: 23         # only seconds/minutes/hours ages are accepted
+  batch_size: 50            # items per POST to STORE_ENDPOINT (30-100)
+  url_check_attempts: 1
+  url_check_batch: 150      # urls per url-check request (100-200)
+  url_check_workers: 2
+  seen_ttl_hours: 72
+  parent_toplevel_mode: self   # self | null
+  exact_time_keys: []       # fill after tools/yt_time_probe.py finds an absolute timestamp key
+  probe_video: dQw4w9WgXcQ
+  seed_channels:
+    - UCX6OQ3DkcsbYNE6H8uQQuVA
+    - UCq-Fj5jknLsUf-MWSy4_brA
+    - UC-lHJZR3Gqxm24_Vd_AJ5Yw
+    - UCJ5v_MCY6GNUBTO8-D3XoAg
+    - UCFFbwnve3yF62-tVXkTyHqg
+  fallback_videos: [dQw4w9WgXcQ, 9bZkp7q19f0, kJQP7kiw5Fk, JGwWNGJdvx8, RgKAFK5djSk]
+
+vpn:
+  sources:
+    - https://github.com/Au1rxx/free-vpn-subscriptions/raw/main/output/v2ray-base64.txt
+  candidates: 800
+  nodes: 250
+  keep: 150
+  probe_concurrency: 30
+  max_latency_seconds: 8.0
+  refresh_minutes: 60
+  quarantine_seconds: 120
