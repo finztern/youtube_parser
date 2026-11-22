@@ -23,12 +23,15 @@ class Sender:
         self.size = max(1, min(100, int(self.yt.get("batch_size", 50))))
         self.rate = max(0.0, float(self.yt.get("target_rate", 0)))  # items/s to the collector, 0 = unlimited
         self.buffer = max(1, int(self.yt.get("buffer_size", 1000)))
+        self.send_limit = max(1, int(self.yt.get("send_queue_limit", 500)))  # max items waiting in send_q
 
     def need(self, pending: int = 0) -> bool:
         """True if polling YouTube should go on: always when unlimited, else while queued items < buffer_size."""
         return self.rate <= 0 or self.q.qsize() + pending < self.buffer
 
     async def put(self, item: dict) -> None:
+        while self.q.qsize() >= self.send_limit:  # backpressure: url-check workers wait, verified items are not lost
+            await asyncio.sleep(0.2)
         try:
             self.q.put_nowait(item)
         except asyncio.QueueFull:
