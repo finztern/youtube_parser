@@ -19,6 +19,8 @@ log = logging.getLogger("main")
 async def amain() -> None:
     cfg = config.load()
     logging.basicConfig(level=cfg["env"]["log_level"], format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    for noisy in ("httpx", "httpcore"):  # httpx logs full request URLs: the subscription URL carries a token
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     yt = cfg["youtube"]
     stats = Stats()
     pool = NodePool(cfg, stats)

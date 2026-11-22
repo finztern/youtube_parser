@@ -157,6 +157,7 @@ async def harvest(cfg: dict, base_port: int) -> tuple[list[str], asyncio.subproc
             is_own.append(link in own_links)
         except ValueError:
             continue
+    log.info("vpn: %d links (%d own), %d parsed as supported vless", len(links), len(own_links), len(candidates))
     with tempfile.TemporaryDirectory() as tmp:
         sem = asyncio.Semaphore(8)
         ok = await asyncio.gather(*(_xray_accepts(xray, n, Path(tmp), base_port, sem, i) for i, n in enumerate(candidates)))
