@@ -33,9 +33,9 @@ class SeenCache:
 class Pipeline:
     """offer(item) -> url-check batches -> sender. Known urls are dropped; a failed check drops the batch."""
 
-    def __init__(self, cfg: dict, stats, sender, pool=None) -> None:
+    def __init__(self, cfg: dict, stats, sender, pool=None, hot=None) -> None:
         yt = cfg["youtube"]
-        self.stats, self.sender, self.pool = stats, sender, pool
+        self.stats, self.sender, self.pool, self.hot = stats, sender, pool, hot
         self.endpoint, self.proxy = cfg["env"]["url_check_endpoint"], cfg["env"]["url_check_proxy"]
         self.yt = yt
         self.workers = int(yt.get("url_check_workers", 2))
@@ -90,12 +90,20 @@ class Pipeline:
                 self.stats.inc("url_unverified", len(batch))
                 self.stats.inc("url_check_fail")
                 continue
+            per: dict[str, list[int]] = {}
             for item in batch:
-                if item["url"] in known:
-                    self.stats.inc("known")
-                else:
+                is_new = item["url"] not in known
+                c = per.setdefault(item["url"].partition("v=")[2].partition("&")[0], [0, 0])
+                c[0] += is_new
+                c[1] += 1
+                if is_new:
                     self.stats.inc("new")
                     await self.sender.put(item)
+                else:
+                    self.stats.inc("known")
+            if self.hot is not None:
+                for vid, (n, t) in per.items():
+                    self.hot.feedback(vid, n, t)
 
     async def run(self) -> None:
         async def purge_loop() -> None:

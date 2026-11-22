@@ -27,7 +27,7 @@ async def amain() -> None:
     pool = NodePool(cfg, stats)
     hot = HotList(yt, Pacer(float(yt.get("hot_interval", 30))))
     sender = Sender(cfg, stats)
-    pipeline = Pipeline(cfg, stats, sender, pool)
+    pipeline = Pipeline(cfg, stats, sender, pool, hot)
     explorer = Explorer(cfg, pool, hot, pipeline, stats)
 
     coros = [config.watch(cfg, [sender.reload, pipeline.reload, explorer.reload, hot.reload]), pool.run(), sender.run(), pipeline.run(), stats.run(pool, hot, pipeline), explorer.housekeeping()]

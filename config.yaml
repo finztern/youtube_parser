@@ -17,6 +17,7 @@ youtube:
   parent_toplevel_mode: self   # self | null
   exact_time_keys: []       # fill after tools/yt_time_probe.py finds an absolute timestamp key
   probe_video: dQw4w9WgXcQ
+  reseed_minutes: 10        # re-read channel RSS feeds for new uploads; 0 = off. Hot reload
   seed_channels:
     - UCX6OQ3DkcsbYNE6H8uQQuVA
     - UCq-Fj5jknLsUf-MWSy4_brA

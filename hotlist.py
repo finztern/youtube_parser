@@ -7,10 +7,11 @@ from collections import deque
 
 
 class Video:
-    __slots__ = ("vid", "token", "last_poll", "ema", "polls", "dead")
+    __slots__ = ("vid", "token", "last_poll", "ema", "polls", "dead", "nr")
 
     def __init__(self, vid: str) -> None:
         self.vid, self.token, self.last_poll, self.ema, self.polls, self.dead = vid, None, 0.0, 0.0, 0, False
+        self.nr = 0.5  # EMA of the share of comments unknown to url-check (NEW)
 
 
 class Pacer:
@@ -62,7 +63,7 @@ class HotList:
         if random.random() >= self.explore_share:
             best = None
             for v in self.hot:
-                if now - v.last_poll >= interval and (best is None or v.ema > best.ema):
+                if now - v.last_poll >= interval and (best is None or v.ema * (0.1 + v.nr) > best.ema * (0.1 + best.nr)):
                     best = v
             if best:
                 best.last_poll = now
@@ -91,6 +92,12 @@ class HotList:
                 self.hot.discard(min(self.hot, key=lambda x: x.ema))
         else:
             self.hot.discard(v)
+
+    def feedback(self, vid: str, new: int, total: int) -> None:
+        """url-check result for a video: new of total comments were unknown to the network."""
+        v = self.videos.get(vid)
+        if v is not None and total:
+            v.nr = 0.7 * v.nr + 0.3 * (new / total)
 
     def gc(self) -> None:
         """Keep memory bounded: over the cap drop dead videos, then the coldest polled ones."""

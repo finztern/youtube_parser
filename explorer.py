@@ -25,6 +25,7 @@ class Explorer:
         self.max_age_s = int(float(self.yt.get("max_age_hours", 23)) * 3600)
         self.parent_mode = self.yt.get("parent_toplevel_mode", "self")
         self.exact_keys = list(self.yt.get("exact_time_keys") or [])
+        self.reseed_s = float(self.yt.get("reseed_minutes", 10)) * 60  # 0 = no periodic reseed
 
     async def seed(self) -> None:
         async def one(ch: str) -> None:
@@ -45,6 +46,7 @@ class Explorer:
         await asyncio.gather(*(one(ch) for ch in self.yt.get("seed_channels", [])))
         for vid in self.yt.get("fallback_videos", []):
             self.hot.add(vid)
+        self._last_seed = time.monotonic()
         log.info("seed videos: %d", len(self.hot.videos))
 
     def _take(self, text: str, v: Video) -> tuple[int, int]:
@@ -149,3 +151,6 @@ class Explorer:
             await asyncio.sleep(30)
             self.hot.pacer.decay()
             self.hot.gc()
+            last = getattr(self, "_last_seed", None)  # set by the first seed() after nodes are up
+            if last is not None and self.reseed_s > 0 and time.monotonic() - last >= self.reseed_s:
+                await self.seed()
