@@ -9,8 +9,8 @@ youtube:
   max_age_hours: 23         # only seconds/minutes/hours ages are accepted
   batch_size: 50            # items per POST to STORE_ENDPOINT (30-100)
   url_check_attempts: 1
-  url_check_batch: 150      # urls per url-check request (100-200)
-  url_check_workers: 2
+  url_check_batch: 200      # urls per url-check request (100-200)
+  url_check_workers: 8
   seen_ttl_hours: 72
   parent_toplevel_mode: self   # self | null
   exact_time_keys: []       # fill after tools/yt_time_probe.py finds an absolute timestamp key

@@ -25,9 +25,9 @@ class Stats:
             req = max(1, d("req") + d("blocked") + d("http_err") + d("err"))
             log.info(
                 "polls/s %.1f | fresh %d | known %d | NEW %d | sent/s %.1f | blocked %.0f%% | nodes %d/%d | %.1f Mbit/s"
-                " | hot %d videos %d hot_int %.0fs seen %d | unverified %d send_failed %d",
+                " | hot %d videos %d hot_int %.0fs seen %d | unverified %d send_failed %d | check_q %d drop %d",
                 d("polls") / dt, d("fresh"), d("known"), d("new"), d("sent") / dt, 100 * (d("blocked") + d("err")) / req,
                 pool.live_count(), len(pool.proxies), d("bytes") * 8 / 1e6 / dt,
-                len(hot.hot), len(hot.videos), hot.pacer.current, len(pipeline.seen), d("url_unverified"), d("send_failed"),
+                len(hot.hot), len(hot.videos), hot.pacer.current, len(pipeline.seen), d("url_unverified"), d("send_failed"), pipeline.q.qsize(), d("queue_drop"),
             )
             last, t_last = Counter(c), now
