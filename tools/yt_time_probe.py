@@ -1,6 +1,6 @@
 """Probe (TZ p.0): look for absolute timestamps and author channelId in youtubei/v1/next comment responses.
 
-Usage: PROXY=socks5h://127.0.0.1:PORT python3 tools/yt_time_probe.py [video_id ...]
+Usage: PROXY=pool python3 (or PROXY=socks5h://...) tools/yt_time_probe.py [video_id ...]
 Raw responses go to docs/probe/ (git-ignored); the report goes to docs/yt_time_probe_report.md.
 """
 from __future__ import annotations
@@ -39,7 +39,16 @@ async def main() -> None:
     abs_hits: Counter[str] = Counter()
     keys: Counter[str] = Counter()
     ents = with_channel = 0
-    async with new_session(os.getenv("PROXY") or None) as s:
+    proxy = os.getenv("PROXY") or None
+    if proxy == "pool":  # start the VPN nodes from .env/config.yaml and use one of them
+        import config
+        from nodes import NodePool
+        from stats import Stats
+        pool = NodePool(config.load(), Stats())
+        if not await pool.refresh():
+            raise SystemExit("no working VPN node")
+        proxy = pool.pick()
+    async with new_session(proxy) as s:
         for vid in videos:
             try:
                 text, _ = await post_next(s, {"videoId": vid})
@@ -69,4 +78,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    finally:
+        pass
