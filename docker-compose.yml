@@ -5,3 +5,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"   # STORE_ENDPOINT on the host: http://host.docker.internal:PORT/path
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
