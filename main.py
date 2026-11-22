@@ -30,7 +30,7 @@ async def amain() -> None:
     pipeline = Pipeline(cfg, stats, sender, pool)
     explorer = Explorer(cfg, pool, hot, pipeline, stats)
 
-    coros = [pool.run(), sender.run(), pipeline.run(), stats.run(pool, hot, pipeline), explorer.housekeeping()]
+    coros = [config.watch(cfg, [sender.reload, pipeline.reload, explorer.reload, hot.reload]), pool.run(), sender.run(), pipeline.run(), stats.run(pool, hot, pipeline), explorer.housekeeping()]
     if cfg["env"]["dash_port"]:
         sampler = Sampler(stats, pool, hot, pipeline, sender)
         coros += [sampler.run(), serve_dashboard(sampler, cfg["env"]["dash_host"], cfg["env"]["dash_port"])]

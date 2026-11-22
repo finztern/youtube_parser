@@ -4,6 +4,8 @@ services:
     env_file: .env
     extra_hosts:
       - "host.docker.internal:host-gateway"   # STORE_ENDPOINT on the host: http://host.docker.internal:PORT/path
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro   # hot reload: edit in place, no rebuild/restart
     ports:
       - "${DASH_PORT:-8090}:${DASH_PORT:-8090}"   # dashboard
     restart: unless-stopped

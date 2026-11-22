@@ -19,6 +19,10 @@ class Pacer:
     def __init__(self, base: float) -> None:
         self.base, self.current, self._last_slow = base, base, 0.0
 
+    def set_base(self, base: float) -> None:
+        self.base = base
+        self.current = min(max(self.current, base), base * 8)
+
     def slow_down(self) -> None:
         now = time.monotonic()
         if now - self._last_slow > 10:  # one step per burst of 429s
@@ -32,15 +36,20 @@ class Pacer:
 
 class HotList:
     def __init__(self, yt: dict, pacer: Pacer) -> None:
-        self.pacer = pacer
-        self.explore_share = float(yt.get("explore_share", 0.7))
-        self.hot_min = float(yt.get("hot_min_gain", 1.0))
-        self.max_hot = int(yt.get("max_hot_videos", 2000))
-        self.max_videos = int(yt.get("max_videos", 100_000))
+        self.pacer, self.yt = pacer, yt
+        self.reload()
         self.videos: dict[str, Video] = {}
         self.ids: list[str] = []
         self.explore: deque[str] = deque()
         self.hot: set[Video] = set()
+
+    def reload(self) -> None:
+        yt = self.yt
+        self.explore_share = float(yt.get("explore_share", 0.7))
+        self.hot_min = float(yt.get("hot_min_gain", 1.0))
+        self.max_hot = int(yt.get("max_hot_videos", 2000))
+        self.max_videos = int(yt.get("max_videos", 100_000))
+        self.pacer.set_base(float(yt.get("hot_interval", 30)))
 
     def add(self, vid: str) -> None:
         if vid not in self.videos and len(self.videos) < self.max_videos:

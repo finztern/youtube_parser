@@ -18,6 +18,9 @@ log = logging.getLogger("explorer")
 class Explorer:
     def __init__(self, cfg: dict, pool, hot: HotList, pipeline, stats) -> None:
         self.yt, self.pool, self.hot, self.pipe, self.stats = cfg["youtube"], pool, hot, pipeline, stats
+        self.reload()
+
+    def reload(self) -> None:
         self.max_pages = int(self.yt.get("max_pages", 3))
         self.max_age_s = int(float(self.yt.get("max_age_hours", 23)) * 3600)
         self.parent_mode = self.yt.get("parent_toplevel_mode", "self")
@@ -115,6 +118,10 @@ class Explorer:
                         await asyncio.sleep(2)
                         continue
                     session = new_session(proxy)
+                if not self.pipe.wants_more():  # target_rate reached: buffer is full, do not hit YouTube
+                    self.stats.inc("throttled")
+                    await asyncio.sleep(0.5)
+                    continue
                 v, kind = self.hot.pick()
                 if v is None:
                     await asyncio.sleep(0.5)

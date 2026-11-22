@@ -37,11 +37,20 @@ class Pipeline:
         yt = cfg["youtube"]
         self.stats, self.sender, self.pool = stats, sender, pool
         self.endpoint, self.proxy = cfg["env"]["url_check_endpoint"], cfg["env"]["url_check_proxy"]
-        self.batch = int(yt.get("url_check_batch", 150))
-        self.attempts = max(1, int(yt.get("url_check_attempts", 1)))
+        self.yt = yt
         self.workers = int(yt.get("url_check_workers", 2))
         self.seen = SeenCache(float(yt.get("seen_ttl_hours", 72)) * 3600)
         self.q: asyncio.Queue = asyncio.Queue(maxsize=50_000)
+        self.reload()
+
+    def reload(self) -> None:
+        self.batch = int(self.yt.get("url_check_batch", 150))
+        self.attempts = max(1, int(self.yt.get("url_check_attempts", 1)))
+        self.seen.ttl = float(self.yt.get("seen_ttl_hours", 72)) * 3600
+
+    def wants_more(self) -> bool:
+        """Backpressure for the explorers: enough verified+pending items are already buffered."""
+        return self.sender.need(self.q.qsize())
 
     def offer(self, item: dict) -> bool:
         """True if the comment was not seen before and went to the url-check queue."""
