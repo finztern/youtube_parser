@@ -1,14 +1,17 @@
-"""Built-in web dashboard: samples Stats every 2 s, serves a live page (/), JSON (/api), Prometheus (/metrics). No extra deps."""
+"""Built-in web dashboard: samples Stats every 2 s, serves a live page (/), JSON (/api). No extra deps."""
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import re
 import time
 from collections import deque
+from pathlib import Path
 
 log = logging.getLogger("dashboard")
+
+VENDOR = Path(__file__).resolve().parent / "vendor" / "uplot"
+ASSETS = {"/vendor/uplot.js": ("uplot.js", "application/javascript"), "/vendor/uplot.css": ("uplot.css", "text/css")}
 
 KEYS = ("polls", "received", "fresh", "repeat", "known", "new", "sent", "req", "blocked", "http_err", "err", "bytes",
         "send_failed", "send_queue_drop", "queue_drop", "url_unverified", "url_check_fail", "node_quarantine")
@@ -53,20 +56,6 @@ class Sampler:
         return {"uptime": int(time.monotonic() - self._t0), "points": list(self.points),
                 "totals": {k: c[k] for k in KEYS}, "filtered": filtered, "gauges": gauges}
 
-    def metrics(self) -> str:
-        """Prometheus text exposition: every counter as ytp_<key>_total plus gauges."""
-        c, out = self.s.c, []
-        for k in sorted(set(KEYS) | set(FILTERED) | set(c)):
-            n = "ytp_" + re.sub(r"\W", "_", k) + "_total"
-            out += [f"# TYPE {n} counter", f"{n} {c[k]}"]
-        g = {"check_q": self.pipe.q.qsize(), "send_q": self.sender.q.qsize(), "nodes_live": self.pool.live_count(),
-             "nodes_total": len(self.pool.proxies), "hot": len(self.hot.hot), "videos": len(self.hot.videos),
-             "hot_interval_seconds": round(self.hot.pacer.current, 1), "seen": len(self.pipe.seen),
-             "uptime_seconds": int(time.monotonic() - self._t0)}
-        for k, v in g.items():
-            out += [f"# TYPE ytp_{k} gauge", f"ytp_{k} {v}"]
-        return "\n".join(out) + "\n"
-
     async def run(self) -> None:
         while True:
             await asyncio.sleep(self.every)
@@ -82,8 +71,9 @@ async def serve(sampler: Sampler, host: str, port: int) -> None:
             path = line[1].split("?")[0] if len(line) > 1 else "/"
             if path == "/api":
                 body, ctype, code = json.dumps(sampler.state()).encode(), "application/json", "200 OK"
-            elif path == "/metrics":
-                body, ctype, code = sampler.metrics().encode(), "text/plain; version=0.0.4", "200 OK"
+            elif path in ASSETS:
+                name, ctype = ASSETS[path]
+                body, code = (VENDOR / name).read_bytes(), "200 OK"
             elif path == "/":
                 body, ctype, code = PAGE.encode(), "text/html; charset=utf-8", "200 OK"
             else:
@@ -107,7 +97,7 @@ async def serve(sampler: Sampler, host: str, port: int) -> None:
 
 
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>youtube_parser</title><style>
+<title>youtube_parser</title><link rel="stylesheet" href="/vendor/uplot.css"><style>
 :root{--bg:#0e1117;--card:#161b22;--bd:#262d38;--tx:#e6edf3;--mu:#8b949e;--g:#3fb950;--b:#58a6ff;--o:#f0883e;--r:#f85149;--p:#bc8cff;--y:#d29922}
 @media(prefers-color-scheme:light){:root{--bg:#f6f8fa;--card:#fff;--bd:#d0d7de;--tx:#1f2328;--mu:#656d76}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;padding:16px;max-width:1400px;margin:auto}
@@ -127,7 +117,7 @@ h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);
 @media(max-width:1000px){.charts{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.charts,.two{grid-template-columns:1fr}}
 .ch h3,.card h3{margin:0 0 6px;font-size:13px;font-weight:600}.lg{font-size:11px;color:var(--mu)}.lg u{text-decoration:none;margin-right:10px}
-canvas.big{width:100%;height:150px;display:block}
+.u{height:150px}.lg b{font-weight:600}
 .bar{display:grid;grid-template-columns:150px 1fr 90px;gap:8px;align-items:center;font-size:13px;padding:3px 0}
 .bar .t{height:14px;background:var(--bd);border-radius:4px;overflow:hidden}.bar .t div{height:100%;border-radius:4px}
 .bar .n{text-align:right;font-variant-numeric:tabular-nums}.bar .k{color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -144,6 +134,7 @@ canvas.big{width:100%;height:150px;display:block}
 <h2>Filtered &amp; totals</h2>
 <div class="two"><div class="card"><h3>Filtered / skip reasons</h3><div id="flt"></div></div>
 <div class="card"><h3>Totals</h3><div id="tot"></div></div></div>
+<script src="/vendor/uplot.js"></script>
 <script>
 const C={g:'#3fb950',b:'#58a6ff',o:'#f0883e',r:'#f85149',p:'#bc8cff',y:'#d29922'};
 const CH=[
@@ -154,28 +145,24 @@ const CH=[
  {t:'backlog: check_q · send_q (items)',s:[['checkq','check_q',C.o],['sendq','send_q',C.g]]},
  {t:'traffic MB/s',s:[['mbs','MB/s',C.g]]}];
 const $=id=>document.getElementById(id);
-let D=null,win=150,hov=null;
-$('charts').innerHTML=CH.map((c,i)=>`<div class="card ch"><h3>${c.t}</h3><canvas class="big" id="c${i}"></canvas><div class="lg">${c.s.map(x=>`<u style="color:${x[2]}">● ${x[1]}</u>`).join('')}</div></div>`).join('');
+let D=null,win=150,zoomed=false,U=[];
+$('charts').innerHTML=CH.map((c,i)=>`<div class="card ch"><h3>${c.t}</h3><div class="u" id="c${i}"></div><div class="lg" id="l${i}"></div></div>`).join('');
 const css=k=>getComputedStyle(document.body).getPropertyValue(k);
 const pf=v=>v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2);
-function draw(cv,P,c){const dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;
- const x=cv.getContext('2d');x.scale(dpr,dpr);x.clearRect(0,0,w,h);
- let mx=c.max||Math.max(1e-9,...P.flatMap(p=>c.s.map(s=>p[s[0]]||0)));mx*=1.1;const L=34,B=14,n=P.length;
- x.font='10px system-ui';x.fillStyle=css('--mu');x.strokeStyle=css('--bd');
- for(let i=0;i<=3;i++){const y=4+(h-B-4)*i/3;x.beginPath();x.moveTo(L,y);x.lineTo(w,y);x.stroke();x.fillText((mx*(1-i/3)).toFixed(mx<10?1:0),0,y+3)}
- if(n<2)return;
- const X=i=>L+(w-L)*i/(n-1),Y=v=>4+(h-B-4)*(1-(v||0)/mx);
- c.s.forEach(s=>{x.beginPath();P.forEach((p,i)=>i?x.lineTo(X(i),Y(p[s[0]])):x.moveTo(X(i),Y(p[s[0]])));
-  x.strokeStyle=s[2];x.lineWidth=1.6;x.stroke();
-  x.lineTo(X(n-1),h-B);x.lineTo(X(0),h-B);x.closePath();x.globalAlpha=.1;x.fillStyle=s[2];x.fill();x.globalAlpha=1});
- x.fillStyle=css('--mu');x.textAlign='left';x.fillText(new Date(P[0].t*1000).toLocaleTimeString(),L,h-2);
- x.textAlign='right';x.fillText(new Date(P[n-1].t*1000).toLocaleTimeString(),w,h-2);x.textAlign='left';
- if(hov!==null){const i=Math.round(hov*(n-1)),p=P[i],px=X(i);
-  x.strokeStyle=css('--mu');x.setLineDash([3,3]);x.beginPath();x.moveTo(px,4);x.lineTo(px,h-B);x.stroke();x.setLineDash([]);
-  const rows=[new Date(p.t*1000).toLocaleTimeString(),...c.s.map(s=>s[1]+' '+pf(p[s[0]]||0))],bw=Math.max(...rows.map(r=>x.measureText(r).width))+14,bh=rows.length*13+6;
-  const bx=px>w/2?px-bw-8:px+8;x.fillStyle=css('--card');x.strokeStyle=css('--bd');x.fillRect(bx,6,bw,bh);x.strokeRect(bx,6,bw,bh);
-  rows.forEach((r,j)=>{x.fillStyle=j?c.s[j-1][2]:css('--mu');x.fillText(r,bx+7,19+j*13)});
-  c.s.forEach(s=>{x.beginPath();x.arc(px,Y(p[s[0]]),3,0,7);x.fillStyle=s[2];x.fill()})}}
+const legend=(c,p)=>(p?'<u>'+new Date(p.t*1000).toLocaleTimeString()+'</u>':'')+c.s.map(x=>`<u style="color:${x[2]}">● ${x[1]}${p?' <b>'+pf(p[x[0]]||0)+'</b>':''}</u>`).join('');
+function mkChart(i){const c=CH[i],el=$('c'+i),mu=css('--mu'),bd=css('--bd'),ax={stroke:mu,grid:{stroke:bd,width:1},ticks:{stroke:bd,width:1}};
+ $('l'+i).innerHTML=legend(c,null);
+ U[i]=new uPlot({width:el.clientWidth||300,height:150,legend:{show:false},
+  cursor:{sync:{key:'ytp',scales:['x',null]},drag:{x:true,y:false,setScale:true}},
+  scales:{x:{time:true},y:{range:(u,a,b)=>[0,c.max||Math.max(b*1.1,1e-9)]}},
+  axes:[ax,{...ax,size:44}],
+  series:[{}].concat(c.s.map(s=>({stroke:s[2],width:1.6,fill:s[2]+'1a',points:{show:false}}))),
+  hooks:{setSelect:[u=>{if(u.select.width>0)zoomed=true}],
+   setCursor:[u=>{const k=u.cursor.idx,p=k==null||!D?null:D.points.slice(-win)[k];$('l'+i).innerHTML=legend(c,p)}]}},
+  [[]].concat(c.s.map(()=>[])),el);
+ el.addEventListener('dblclick',()=>{zoomed=false;render()})}
+function upd(P){if(zoomed)return;const ts=P.map(p=>p.t);CH.forEach((c,i)=>U[i].setData([ts,...c.s.map(s=>P.map(p=>p[s[0]]||0))]))}
+CH.forEach((c,i)=>mkChart(i));
 function spark(cv,P,k,col){const dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;
  const x=cv.getContext('2d');x.scale(dpr,dpr);const n=P.length;if(n<2)return;const mx=Math.max(1e-9,...P.map(p=>p[k]||0));
  const X=i=>w*i/(n-1),Y=v=>h-2-(h-4)*(v||0)/mx;x.beginPath();P.forEach((p,i)=>i?x.lineTo(X(i),Y(p[k])):x.moveTo(X(i),Y(p[k])));
@@ -211,10 +198,9 @@ function render(){if(!D)return;const P=D.points.slice(-win),L=D.points.slice(-15
   ['hot / videos',G.hot+' / '+G.videos,'',''],['hot interval, s',G.hot_int,'',''],['seen cache',G.seen,'','']];
  $('c_flow').innerHTML=cardsHtml(fl);$('c_q').innerHTML=cardsHtml(q);$('c_n').innerHTML=cardsHtml(n);
  document.querySelectorAll('canvas.sp').forEach(cv=>spark(cv,P,cv.dataset.k,cv.dataset.c));
- funnel(T,D.filtered);CH.forEach((c,i)=>draw($('c'+i),P,c));
+ funnel(T,D.filtered);upd(P);
  const f=D.filtered,sk=Object.fromEntries(Object.entries(f));bars('flt',sk,C.o);bars('tot',T,C.b)}
 async function tick(){try{D=await (await fetch('/api')).json();render()}catch(e){$('up').textContent='disconnected'}}
-document.querySelectorAll('#win button').forEach(b=>b.onclick=()=>{win=+b.dataset.w;document.querySelectorAll('#win button').forEach(x=>x.classList.toggle('on',x===b));render()});
-CH.forEach((c,i)=>{const cv=$('c'+i);cv.onmousemove=e=>{const r=cv.getBoundingClientRect();hov=Math.min(1,Math.max(0,(e.clientX-r.left-34)/(r.width-34)));render()};cv.onmouseleave=()=>{hov=null;render()}});
-tick();setInterval(tick,2000);addEventListener('resize',render);
+document.querySelectorAll('#win button').forEach(b=>b.onclick=()=>{win=+b.dataset.w;zoomed=false;document.querySelectorAll('#win button').forEach(x=>x.classList.toggle('on',x===b));render()});
+tick();setInterval(tick,2000);addEventListener('resize',()=>{CH.forEach((c,i)=>U[i].setSize({width:$('c'+i).clientWidth,height:150}));render()});
 </script></body></html>"""
