@@ -48,7 +48,7 @@ class Sampler:
         gauges = {"check_q": self.pipe.q.qsize(), "send_q": self.sender.q.qsize(),
                   "nodes": f"{self.pool.live_count()}/{len(self.pool.proxies)}",
                   "hot": len(self.hot.hot), "videos": len(self.hot.videos),
-                  "hot_int": round(self.hot.pacer.current), "seen": len(self.pipe.seen)}
+                  "hot_int": round(self.hot.pacer.current), "explore_pct": round(100 * self.hot.share()), "seen": len(self.pipe.seen)}
         return {"uptime": int(time.monotonic() - self._t0), "points": list(self.points),
                 "totals": {k: c[k] for k in KEYS}, "filtered": filtered, "gauges": gauges}
 

@@ -2,10 +2,14 @@ youtube:
   workers: 100
   hot_interval: 30          # seconds between polls of one hot video
   hot_min_gain: 1.0         # video stays hot while it gives >= this many new comments per poll
-  explore_share: 0.7
+  explore_share: 0.7        # max share of explore polls; the real share adapts to fresh-per-MB of explore vs hot (floor: explore_min)
+  explore_min: 0.2
+  explore_max: 3000         # bounded queue of related videos (oldest dropped); new uploads from seed channels go first
   max_hot_videos: 2000
-  max_videos: 100000
+  max_videos: 20000
   max_pages: 3
+  hot_max_pages: 2          # hot videos: page 2 only if new >= hot_page_gain of page 1
+  hot_page_gain: 0.8
   max_age_hours: 23         # only seconds/minutes/hours ages are accepted
   target_rate: 50           # unique comments/s (after url-check) sent to the collector; 0 = unlimited. Hot reload
   buffer_size: 2000         # soft cap of queued items (check_q + send_q); polling pauses above it. Hot reload
@@ -18,7 +22,7 @@ youtube:
   parent_toplevel_mode: self   # self | null
   exact_time_keys: []       # fill after tools/yt_time_probe.py finds an absolute timestamp key
   probe_video: dQw4w9WgXcQ
-  reseed_minutes: 10        # re-read channel RSS feeds for new uploads; 0 = off. Hot reload
+  reseed_minutes: 5         # re-read channel RSS feeds for new uploads; 0 = off. Hot reload
   seed_channels:
     - UCX6OQ3DkcsbYNE6H8uQQuVA
     - UCq-Fj5jknLsUf-MWSy4_brA

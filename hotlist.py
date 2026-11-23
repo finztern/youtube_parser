@@ -38,29 +38,50 @@ class Pacer:
 class HotList:
     def __init__(self, yt: dict, pacer: Pacer) -> None:
         self.pacer, self.yt = pacer, yt
-        self.reload()
         self.videos: dict[str, Video] = {}
         self.ids: list[str] = []
-        self.explore: deque[str] = deque()
+        self.explore_fresh: deque[str] = deque()  # new uploads (RSS): explored first
+        self.explore: deque[str] = deque()  # related videos; bounded, the oldest are dropped
         self.hot: set[Video] = set()
+        self.yield_mb: dict[str, float | None] = {"hot": None, "explore": None}  # EMA of fresh comments per MB
+        self.reload()
 
     def reload(self) -> None:
         yt = self.yt
         self.explore_share = float(yt.get("explore_share", 0.7))
         self.hot_min = float(yt.get("hot_min_gain", 1.0))
         self.max_hot = int(yt.get("max_hot_videos", 2000))
-        self.max_videos = int(yt.get("max_videos", 100_000))
+        self.max_videos = int(yt.get("max_videos", 20_000))
+        self.explore_min = float(yt.get("explore_min", 0.2))
+        self.explore = deque(self.explore, maxlen=max(100, int(yt.get("explore_max", 3000))))
         self.pacer.set_base(float(yt.get("hot_interval", 30)))
 
-    def add(self, vid: str) -> None:
-        if vid not in self.videos and len(self.videos) < self.max_videos:
-            self.videos[vid] = Video(vid)
-            self.ids.append(vid)
-            self.explore.append(vid)
+    def add(self, vid: str, fresh: bool = False) -> None:
+        """fresh=True: a new upload from a seed channel (bypasses the cap, explored first)."""
+        if vid in self.videos or (not fresh and len(self.videos) >= self.max_videos):
+            return
+        self.videos[vid] = Video(vid)
+        self.ids.append(vid)
+        (self.explore_fresh if fresh else self.explore).append(vid)
+
+    def record(self, kind: str, fresh: int, nbytes: int) -> None:
+        """Cost-effectiveness of a poll: fresh comments per MB, EMA per kind (hot / explore+repoll)."""
+        if nbytes <= 0:
+            return
+        k, y = ("hot" if kind == "hot" else "explore"), fresh / (nbytes / 1e6)
+        old = self.yield_mb[k]
+        self.yield_mb[k] = y if old is None else 0.8 * old + 0.2 * y
+
+    def share(self) -> float:
+        """Explore share: follows the relative yield per MB, between explore_min and explore_share."""
+        e, h = self.yield_mb["explore"], self.yield_mb["hot"]
+        if e is None or h is None or e + h <= 0:
+            return self.explore_share
+        return min(self.explore_share, max(self.explore_min, e / (e + h)))
 
     def pick(self) -> tuple[Video | None, str]:
         now, interval = time.monotonic(), self.pacer.current
-        if random.random() >= self.explore_share:
+        if random.random() >= self.share():
             best = None
             for v in self.hot:
                 if now - v.last_poll >= interval and (best is None or v.ema * (0.1 + v.nr) > best.ema * (0.1 + best.nr)):
@@ -68,8 +89,8 @@ class HotList:
             if best:
                 best.last_poll = now
                 return best, "hot"
-        while self.explore:
-            v = self.videos.get(self.explore.popleft())
+        while self.explore_fresh or self.explore:
+            v = self.videos.get((self.explore_fresh or self.explore).popleft())
             if v is not None and not v.polls and not v.dead:
                 v.last_poll = now
                 return v, "explore"
