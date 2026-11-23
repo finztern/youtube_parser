@@ -22,3 +22,20 @@ def test_share_follows_yield():
     assert h.share() == 0.2  # hot is far cheaper per MB
     h.yield_mb.update(explore=50.0, hot=1.0)
     assert h.share() == 0.7
+
+
+def test_chill_known_and_empty():
+    h = HotList({}, Pacer(30))
+    h.add("a" * 11)
+    h.add("b" * 11)
+    a, b = h.videos["a" * 11], h.videos["b" * 11]
+    h.update(a, 0)  # first poll without fresh comments
+    assert a.cold_until > 0 and a not in h.hot
+    h.update(b, 5)
+    h.update(b, 5)
+    assert b in h.hot
+    for _ in range(12):
+        h.feedback(b.vid, 0, 10)
+    assert b not in h.hot and b.cold_until > 0
+    h.update(b, 5)
+    assert b not in h.hot

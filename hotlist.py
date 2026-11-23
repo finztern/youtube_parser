@@ -7,11 +7,12 @@ from collections import deque
 
 
 class Video:
-    __slots__ = ("vid", "token", "last_poll", "ema", "polls", "dead", "nr")
+    __slots__ = ("vid", "token", "last_poll", "ema", "polls", "dead", "nr", "checks", "cold_until")
 
     def __init__(self, vid: str) -> None:
         self.vid, self.token, self.last_poll, self.ema, self.polls, self.dead = vid, None, 0.0, 0.0, 0, False
         self.nr = 0.5  # EMA of the share of comments unknown to url-check (NEW)
+        self.checks, self.cold_until = 0, 0.0  # url-check samples; no polling before this time
 
 
 class Pacer:
@@ -53,6 +54,8 @@ class HotList:
         self.max_hot = int(yt.get("max_hot_videos", 2000))
         self.max_videos = int(yt.get("max_videos", 20_000))
         self.explore_min = float(yt.get("explore_min", 0.2))
+        self.cold_s = float(yt.get("cold_hours", 6)) * 3600
+        self.nr_min = float(yt.get("min_new_ratio", 0.1))
         self.explore = deque(self.explore, maxlen=max(100, int(yt.get("explore_max", 3000))))
         self.pacer.set_base(float(yt.get("hot_interval", 30)))
 
@@ -84,7 +87,7 @@ class HotList:
         if random.random() >= self.share():
             best = None
             for v in self.hot:
-                if now - v.last_poll >= interval and (best is None or v.ema * (0.1 + v.nr) > best.ema * (0.1 + best.nr)):
+                if v.cold_until <= now and now - v.last_poll >= interval and (best is None or v.ema * v.nr > best.ema * best.nr):
                     best = v
             if best:
                 best.last_poll = now
@@ -98,16 +101,19 @@ class HotList:
             if not self.ids:
                 break
             v = self.videos.get(random.choice(self.ids))
-            if v is not None and not v.dead and now - v.last_poll >= interval:
+            if v is not None and not v.dead and v.cold_until <= now and now - v.last_poll >= interval:
                 v.last_poll = now
                 return v, "repoll"
         return None, ""
 
     def update(self, v: Video, fresh: int) -> None:
         v.polls += 1
+        if v.polls == 1 and fresh == 0:  # nothing from the last day: an old video, do not come back for a while
+            self.chill(v)
+            return
         # the first poll returns the backlog of the last day: it must not make a video hot, the re-poll is a trial
         v.ema = self.hot_min * 1.5 if v.polls == 1 else 0.5 * v.ema + 0.5 * fresh
-        if v.ema >= self.hot_min:
+        if v.ema >= self.hot_min and v.cold_until <= time.monotonic():
             self.hot.add(v)
             if len(self.hot) > self.max_hot:
                 self.hot.discard(min(self.hot, key=lambda x: x.ema))
@@ -119,6 +125,13 @@ class HotList:
         v = self.videos.get(vid)
         if v is not None and total:
             v.nr = 0.7 * v.nr + 0.3 * (new / total)
+            v.checks += 1
+            if v.checks >= 3 and v.nr < self.nr_min:  # the network already knows (almost) all of its comments
+                self.chill(v)
+
+    def chill(self, v: Video) -> None:
+        v.cold_until = time.monotonic() + self.cold_s
+        self.hot.discard(v)
 
     def gc(self) -> None:
         """Keep memory bounded: over the cap drop dead videos, then the coldest polled ones."""
