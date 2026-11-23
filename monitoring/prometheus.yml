@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: youtube-parser
+    static_configs:
+      - targets: ["youtube-parser:8090"]   # DASH_PORT inside the container; change if you changed DASH_PORT
