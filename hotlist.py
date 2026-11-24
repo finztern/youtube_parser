@@ -119,6 +119,8 @@ class HotList:
                 self.hot.discard(min(self.hot, key=lambda x: x.ema))
         else:
             self.hot.discard(v)
+            if fresh == 0:  # a cold re-poll gave nothing: stop re-polling it for a while (1/6 of cold_hours)
+                self.chill(v, 1 / 6)
 
     def feedback(self, vid: str, new: int, total: int) -> None:
         """url-check result for a video: new of total comments were unknown to the network."""
@@ -129,8 +131,8 @@ class HotList:
             if v.checks >= 3 and v.nr < self.nr_min:  # the network already knows (almost) all of its comments
                 self.chill(v)
 
-    def chill(self, v: Video) -> None:
-        v.cold_until = time.monotonic() + self.cold_s
+    def chill(self, v: Video, frac: float = 1.0) -> None:
+        v.cold_until = time.monotonic() + self.cold_s * frac
         self.hot.discard(v)
 
     def gc(self) -> None:

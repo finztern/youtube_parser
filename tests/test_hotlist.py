@@ -39,3 +39,13 @@ def test_chill_known_and_empty():
     assert b not in h.hot and b.cold_until > 0
     h.update(b, 5)
     assert b not in h.hot
+
+
+def test_cold_repoll_without_fresh_is_chilled():
+    h = HotList({}, Pacer(30))
+    h.add("c" * 11)
+    c = h.videos["c" * 11]
+    h.update(c, 5)
+    h.update(c, 0)
+    h.update(c, 0)
+    assert c.cold_until > 0 and c not in h.hot

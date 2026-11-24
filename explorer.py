@@ -106,7 +106,8 @@ class Explorer:
                 raise
             total, new = self._take(text, v)
             if page == 0 and total == 0:
-                v.token = None  # stale token or no comments: bootstrap again next time
+                v.token = None  # stale token or no comments: bootstrap is expensive, do not repeat it soon
+                self.hot.chill(v)
                 self.stats.inc("token_stale")
                 return
             fresh_total += new

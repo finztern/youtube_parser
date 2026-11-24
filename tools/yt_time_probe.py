@@ -52,6 +52,7 @@ async def main() -> None:
         for vid in videos:
             try:
                 text, _ = await post_next(s, {"videoId": vid})
+                (raw_dir / f"{vid}.watch.json").write_text(text, encoding="utf-8")  # related videos live here
                 tok = first_token(text)
                 text, _ = await post_next(s, {"continuation": tok})
                 m = NEWEST_RE.search(text)
