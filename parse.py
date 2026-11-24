@@ -128,7 +128,7 @@ def related_videos(text: str) -> dict[str, int]:
         if isinstance(n, dict):
             vid = n.get("videoId") or n.get("contentId")
             if isinstance(vid, str) and len(vid) == 11 and vid not in out:
-                blob = json.dumps(n, ensure_ascii=False)
+                blob = json.dumps(n, ensure_ascii=False, separators=(",", ":"))
                 m = VIDEO_AGE_RE.search(blob)
                 if m and set(VID_RE.findall(blob)) | set(CONTENT_RE.findall(blob)) == {vid}:
                     out[vid] = int(m.group(1)) * UNIT_ALL[m.group(2)]
