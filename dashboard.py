@@ -11,7 +11,7 @@ log = logging.getLogger("dashboard")
 
 KEYS = ("polls", "received", "fresh", "repeat", "known", "new", "sent", "req", "blocked", "http_err", "err", "bytes",
         "send_failed", "send_queue_drop", "queue_drop", "url_unverified", "url_check_fail", "node_quarantine")
-FILTERED = ("repeat", "known", "parse_fail", "no_comments", "token_stale")
+FILTERED = ("repeat", "known", "parse_fail", "no_comments", "token_stale", "rel_fresh")
 
 
 class Sampler:

@@ -6,6 +6,7 @@ youtube:
   hot_min_gain: 1.0         # video stays hot while it gives >= this many new comments per poll
   explore_share: 0.7        # max share of explore polls; the real share adapts to fresh-per-MB of explore vs hot (floor: explore_min)
   explore_min: 0.2
+  related_max_age_hours: 36 # related videos older than this are not explored (video age is read from the watch response)
   explore_max: 3000         # bounded queue of related videos (oldest dropped); new uploads from seed channels go first
   max_hot_videos: 2000
   max_videos: 20000

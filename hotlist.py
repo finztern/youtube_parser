@@ -56,12 +56,13 @@ class HotList:
         self.explore_min = float(yt.get("explore_min", 0.2))
         self.cold_s = float(yt.get("cold_hours", 6)) * 3600
         self.nr_min = float(yt.get("min_new_ratio", 0.1))
+        self.explore_fresh = deque(self.explore_fresh, maxlen=max(100, int(yt.get("explore_fresh_max", 2000))))
         self.explore = deque(self.explore, maxlen=max(100, int(yt.get("explore_max", 3000))))
         self.pacer.set_base(float(yt.get("hot_interval", 30)))
 
     def add(self, vid: str, fresh: bool = False) -> None:
         """fresh=True: a new upload from a seed channel (bypasses the cap, explored first)."""
-        if vid in self.videos or (not fresh and len(self.videos) >= self.max_videos):
+        if vid in self.videos or len(self.videos) >= self.max_videos * (1.2 if fresh else 1):
             return
         self.videos[vid] = Video(vid)
         self.ids.append(vid)

@@ -12,6 +12,9 @@ NEXT_RE = re.compile(r'"continuationCommand":\{"token":"([^"]+)"')
 NEWEST_RE = re.compile(r'"title":"Newest(?: first)?".{0,1500}?"continuationCommand":\{"token":"([^"]+)"', re.S)
 AGE_RE = re.compile(r"(\d+)\s+(second|minute|hour|day|week|month|year)")
 UNIT_SECONDS = {"second": 1, "minute": 60, "hour": 3600}
+UNIT_ALL = {**UNIT_SECONDS, "day": 86400, "week": 604800, "month": 2_592_000, "year": 31_536_000}
+VIDEO_AGE_RE = re.compile(r"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago")
+CONTENT_RE = re.compile(r'"contentId":"([A-Za-z0-9_-]{11})"')
 
 
 @dataclass(slots=True)
@@ -107,3 +110,33 @@ def parse_comments(text: str, video_id: str, exact_keys: list[str] | None = None
             exact_ts=_exact_ts(props, exact_keys or []),
         )
     return list(out.values())
+
+
+def related_videos(text: str) -> dict[str, int]:
+    """{video id: age in seconds} for related videos whose renderer carries an 'N units ago' label.
+
+    Works for compactVideoRenderer (videoId) and lockupViewModel (contentId): a node that names exactly one video id
+    and holds an age label. Videos without a label (live, shorts, mixes) are not returned.
+    """
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return {}
+    out: dict[str, int] = {}
+
+    def walk(n) -> None:
+        if isinstance(n, dict):
+            vid = n.get("videoId") or n.get("contentId")
+            if isinstance(vid, str) and len(vid) == 11 and vid not in out:
+                blob = json.dumps(n, ensure_ascii=False)
+                m = VIDEO_AGE_RE.search(blob)
+                if m and set(VID_RE.findall(blob)) | set(CONTENT_RE.findall(blob)) == {vid}:
+                    out[vid] = int(m.group(1)) * UNIT_ALL[m.group(2)]
+            for v in n.values():
+                walk(v)
+        elif isinstance(n, list):
+            for v in n:
+                walk(v)
+
+    walk(data)
+    return out

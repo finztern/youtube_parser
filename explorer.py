@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from client import HEADERS, YtError, new_session, post_next
 from hotlist import HotList, Video
 from mapper import build_item
-from parse import NEWEST_RE, NEXT_RE, VID_RE, first_token, parse_comments
+from parse import NEWEST_RE, NEXT_RE, first_token, parse_comments, related_videos
 
 log = logging.getLogger("explorer")
 
@@ -22,6 +22,7 @@ class Explorer:
 
     def reload(self) -> None:
         self.max_pages = int(self.yt.get("max_pages", 3))
+        self.rel_max_age_s = float(self.yt.get("related_max_age_hours", 36)) * 3600  # only young related videos are explored
         self.hot_pages = int(self.yt.get("hot_max_pages", 2))  # hot videos: the 2nd page only if almost all is new
         self.hot_gain = float(self.yt.get("hot_page_gain", 0.8))
         self.max_age_s = int(float(self.yt.get("max_age_hours", 23)) * 3600)
@@ -85,8 +86,12 @@ class Explorer:
     async def _poll(self, session, v: Video, kind: str, acc: list[int]) -> None:
         if v.token is None:  # bootstrap: related videos + comments token, then the "Newest" token
             text = await self._post(session, {"videoId": v.vid}, acc)
-            for found in VID_RE.findall(text):
-                self.hot.add(found)
+            for found, age in related_videos(text).items():
+                if age <= self.rel_max_age_s:
+                    self.hot.add(found, fresh=True)
+                    self.stats.inc("rel_fresh")
+                else:
+                    self.stats.inc("skip_rel_old")
             token = first_token(text)
             if not token:
                 v.dead = True
