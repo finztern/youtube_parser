@@ -43,4 +43,5 @@ vpn:
   probe_concurrency: 30
   max_latency_seconds: 8.0
   refresh_minutes: 60
+  local_refresh_seconds: 60  # NODES_ENDPOINT mode: how often the list of alive ports is re-read
   quarantine_seconds: 120

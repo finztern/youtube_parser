@@ -116,12 +116,29 @@ async def _xray_accepts(xray: str, node: dict, tmp: Path, base_port: int, sem: a
             return False
 
 
-async def _probe(port: int, video: str, max_latency: float, sem: asyncio.Semaphore) -> float | None:
+async def fetch_alive(endpoint: str) -> list[int] | None:
+    """Ports of the working nodes from the local nodes service (JSON with alive_ports); None if it is unreachable."""
+    try:
+        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+            r = await client.get(endpoint)
+            r.raise_for_status()
+            data = r.json()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("nodes endpoint failed: %s", str(exc)[:80])
+        return None
+    ports = data.get("alive_ports") if isinstance(data, dict) else None
+    if not isinstance(ports, list):
+        log.warning("nodes endpoint: no alive_ports in the answer")
+        return None
+    return [p for p in dict.fromkeys(ports) if isinstance(p, int) and 0 < p < 65536]
+
+
+async def _probe(proxy: str, video: str, max_latency: float, sem: asyncio.Semaphore) -> float | None:
     """Latency if the node answers youtubei/v1/next for a real video, else None."""
     async with sem:
         started = time.monotonic()
         try:
-            async with new_session(f"{LOCAL_PREFIX}{port}", timeout=max_latency * 2.5) as session:
+            async with new_session(proxy, timeout=max_latency * 2.5) as session:
                 text, _ = await post_next(session, {"videoId": video})
             latency = time.monotonic() - started
             return latency if '"responseContext"' in text and latency <= max_latency else None
@@ -180,7 +197,7 @@ async def harvest(cfg: dict, base_port: int) -> tuple[list[str], asyncio.subproc
     max_latency = float(v.get("max_latency_seconds", 8.0))
     video = cfg["youtube"].get("probe_video", "dQw4w9WgXcQ")
     sem = asyncio.Semaphore(int(v.get("probe_concurrency", 30)))
-    lat = await asyncio.gather(*(_probe(base_port + i, video, max_latency, sem) for i in range(len(nodes))))
+    lat = await asyncio.gather(*(_probe(f"{LOCAL_PREFIX}{base_port + i}", video, max_latency, sem) for i in range(len(nodes))))
     ok_all = [(l, base_port + i, own_flags[i]) for i, l in enumerate(lat) if l is not None]
     mine = sorted((l, p) for l, p, o in ok_all if o)
     free = sorted((l, p) for l, p, o in ok_all if not o)
@@ -204,7 +221,27 @@ class NodePool:
         self.quarantine = float(cfg["vpn"].get("quarantine_seconds", 120))
         self._gen = 0
 
+    async def refresh_local(self) -> bool:
+        """Nodes of the local nodes service: its alive ports, minus those that do not answer YouTube. Known ones are kept."""
+        env, v = self.cfg["env"], self.cfg["vpn"]
+        ports = await fetch_alive(env["nodes_endpoint"])
+        if ports is None:
+            return False  # service unreachable: keep the current list
+        urls = [f"{env['nodes_scheme']}://{env['nodes_host']}:{p}" for p in ports]
+        new = [u for u in urls if u not in self._set]
+        sem = asyncio.Semaphore(int(v.get("probe_concurrency", 30)))
+        lat = await asyncio.gather(*(_probe(u, self.cfg["youtube"].get("probe_video", "dQw4w9WgXcQ"), float(v.get("max_latency_seconds", 8.0)), sem) for u in new))
+        proxies = [u for u in urls if u in self._set] + [u for u, l in zip(new, lat) if l is not None]
+        if set(proxies) != self._set:
+            log.info("nodes: %d alive in the service, %d usable (+%d new, %d new failed YouTube)", len(urls), len(proxies), len(proxies) - len(urls) + len(new), len(urls) - len(proxies))
+        self.proxies, self._set = proxies, set(proxies)
+        self.banned = {k: t for k, t in self.banned.items() if k in self._set}
+        self.fails = Counter({k: n for k, n in self.fails.items() if k in self._set})
+        return True
+
     async def refresh(self) -> bool:
+        if self.cfg["env"].get("nodes_endpoint"):
+            return await self.refresh_local()
         proxies, proc = await harvest(self.cfg, PORT_BASES[self._gen % 2])
         if not proxies:
             return False
@@ -219,6 +256,8 @@ class NodePool:
 
     async def run(self) -> None:
         refresh_s = float(self.cfg["vpn"].get("refresh_minutes", 60)) * 60
+        if self.cfg["env"].get("nodes_endpoint"):
+            refresh_s = float(self.cfg["vpn"].get("local_refresh_seconds", 60))
         next_at = 0.0
         while True:
             dead = self.proc is not None and self.proc.returncode is not None

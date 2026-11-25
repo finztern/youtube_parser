@@ -66,6 +66,9 @@ def load() -> dict:
         "store_endpoint": os.getenv("STORE_ENDPOINT", "").strip(),
         "url_check_endpoint": os.getenv("URL_CHECK_ENDPOINT", "https://url-check.exorde.network/v1/check").strip(),
         "url_check_proxy": os.getenv("URL_CHECK_PROXY", "").strip(),
+        "nodes_endpoint": os.getenv("NODES_ENDPOINT", "").strip(),  # local nodes service (alive_ports); empty = free vless lists
+        "nodes_host": os.getenv("NODES_HOST", "host.docker.internal").strip(),
+        "nodes_scheme": os.getenv("NODES_SCHEME", "socks5h").strip(),
         "xray_bin": os.getenv("XRAY_BIN") or shutil.which("xray") or "",
         "log_level": os.getenv("LOG_LEVEL", "INFO").upper(),
         "dash_host": os.getenv("DASH_HOST", "0.0.0.0").strip(),
