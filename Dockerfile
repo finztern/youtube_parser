@@ -5,16 +5,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Xray: local SOCKS inbounds for the free vless:// nodes (nodes.py).
-ARG XRAY_VERSION=v1.8.24
+# sing-box: local SOCKS inbounds for the subscription nodes (vless + hysteria2, nodes.py).
+ARG SINGBOX_VERSION=1.10.7
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl unzip \
- && case "$(dpkg --print-architecture)" in arm64) A=arm64-v8a ;; *) A=64 ;; esac \
- && curl -fsSL -o /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-${A}.zip" \
- && unzip -o /tmp/xray.zip xray -d /usr/local/bin \
- && chmod +x /usr/local/bin/xray \
- && rm -f /tmp/xray.zip \
- && apt-get purge -y curl unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && case "$(dpkg --print-architecture)" in arm64) A=arm64 ;; *) A=amd64 ;; esac \
+ && curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-${A}.tar.gz" \
+  | tar -xz --strip-components=1 -C /usr/local/bin "sing-box-${SINGBOX_VERSION}-linux-${A}/sing-box" \
+ && chmod +x /usr/local/bin/sing-box \
+ && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 

@@ -18,7 +18,7 @@ youtube:
   buffer_size: 2000         # soft cap of queued items (check_q + send_q); polling pauses above it. Hot reload
   send_queue_limit: 500    # max items waiting in send_q; above it url-check workers pause (nothing dropped). Hot reload
   batch_size: 50            # items per POST to STORE_ENDPOINT (30-100)
-  url_check_attempts: 2        # retry through another node when a check fails
+  url_check_attempts: 2        # url-check: 1st try via the fastest node, 2nd via the second fastest
   url_check_batch: 200      # urls per url-check request (100-200)
   url_check_workers: 8
   seen_ttl_hours: 72
@@ -38,10 +38,10 @@ vpn:
   sources:
     - https://github.com/Au1rxx/free-vpn-subscriptions/raw/main/output/v2ray-base64.txt
   candidates: 800
-  nodes: 250
-  keep: 150
-  probe_concurrency: 30
+  nodes: 700
+  keep: 700
+  probe_concurrency: 60
   max_latency_seconds: 8.0
-  refresh_minutes: 60
+  refresh_minutes: 180
   local_refresh_seconds: 60  # NODES_ENDPOINT mode: how often the list of alive ports is re-read
   quarantine_seconds: 120

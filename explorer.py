@@ -126,43 +126,36 @@ class Explorer:
         self.stats.inc(f"polls_{kind}")
 
     async def worker(self) -> None:
-        proxy, session = None, None
-        try:
-            while True:
-                if not self.pool.usable(proxy):  # node gone, replaced or quarantined
-                    if session is not None:
-                        await session.close()
-                        session = None
-                    proxy = self.pool.pick()
-                    if proxy is None:
-                        await asyncio.sleep(2)
-                        continue
-                    session = new_session(proxy)
-                if not self.pipe.wants_more():  # target_rate reached: buffer is full, do not hit YouTube
-                    self.stats.inc("throttled")
-                    await asyncio.sleep(0.5)
-                    continue
-                v, kind = self.hot.pick()
-                if v is None:
-                    await asyncio.sleep(0.5)
-                    continue
-                try:
+        while True:
+            if not self.pipe.wants_more():  # target_rate reached: buffer is full, do not hit YouTube
+                self.stats.inc("throttled")
+                await asyncio.sleep(0.5)
+                continue
+            if self.pool.live_count() == 0:
+                await asyncio.sleep(2)
+                continue
+            v, kind = self.hot.pick()
+            if v is None:
+                await asyncio.sleep(0.5)
+                continue
+            proxy = self.pool.pick()  # a different node (exit IP) for every poll
+            if proxy is None:
+                continue
+            try:
+                async with new_session(proxy) as session:
                     await self.poll(session, v, kind)
-                    self.pool.report(proxy, True)
-                except YtError as exc:
-                    self.stats.inc("blocked" if exc.status in (403, 429) else "http_err")
-                    if exc.status == 429:
-                        self.hot.pacer.slow_down()
-                    self.pool.report(proxy, False, exc.status)
-                    await asyncio.sleep(0.2)
-                except Exception as exc:  # noqa: BLE001
-                    self.stats.inc("err")
-                    self.pool.report(proxy, False)
-                    log.debug("poll error: %s", str(exc)[:80])
-                    await asyncio.sleep(0.2)
-        finally:
-            if session is not None:
-                await session.close()
+                self.pool.report(proxy, True)
+            except YtError as exc:
+                self.stats.inc("blocked" if exc.status in (403, 429) else "http_err")
+                if exc.status == 429:
+                    self.hot.pacer.slow_down()
+                self.pool.report(proxy, False, exc.status)
+                await asyncio.sleep(0.2)
+            except Exception as exc:  # noqa: BLE001
+                self.stats.inc("err")
+                self.pool.report(proxy, False)
+                log.debug("poll error: %s", str(exc)[:80])
+                await asyncio.sleep(0.2)
 
     async def housekeeping(self) -> None:
         while True:

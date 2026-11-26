@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mapper import build_item  # noqa: E402
-from nodes import build_xray_config, parse_vless  # noqa: E402
+from nodes import build_singbox_config, parse_hy2, parse_vless  # noqa: E402
 from parse import age_seconds, parse_comments  # noqa: E402
 
 NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -50,7 +50,10 @@ def test_not_json():
     assert parse_comments("<html>", "v") is None and parse_comments("{}", "v") == []
 
 
-def test_vless_config():
+def test_singbox_config():
     n = parse_vless("vless://11111111-1111-1111-1111-111111111111@example.com:443?type=ws&security=tls&sni=example.com&path=%2Fws#x")
-    cfg = build_xray_config([n, n], 20000)
-    assert cfg["inbounds"][1]["port"] == 20001 and cfg["outbounds"][0]["streamSettings"]["wsSettings"]["path"] == "/ws"
+    h = parse_hy2("hysteria2://pw%40x@example.org:8443,20000-30000/?sni=a.com&insecure=1&obfs=salamander&obfs-password=op#n")
+    cfg = build_singbox_config([n, h], 20000)
+    assert cfg["inbounds"][1]["listen_port"] == 20001 and cfg["outbounds"][0]["transport"]["path"] == "/ws"
+    o = cfg["outbounds"][1]
+    assert o["type"] == "hysteria2" and o["server_port"] == 8443 and o["password"] == "pw@x" and o["obfs"]["password"] == "op" and o["tls"]["insecure"]

@@ -69,7 +69,7 @@ def load() -> dict:
         "nodes_endpoint": os.getenv("NODES_ENDPOINT", "").strip(),  # local nodes service (alive_ports); empty = free vless lists
         "nodes_host": os.getenv("NODES_HOST", "host.docker.internal").strip(),
         "nodes_scheme": os.getenv("NODES_SCHEME", "socks5h").strip(),
-        "xray_bin": os.getenv("XRAY_BIN") or shutil.which("xray") or "",
+        "singbox_bin": os.getenv("SINGBOX_BIN") or shutil.which("sing-box") or "",
         "log_level": os.getenv("LOG_LEVEL", "INFO").upper(),
         "dash_host": os.getenv("DASH_HOST", "0.0.0.0").strip(),
         "dash_port": int(os.getenv("DASH_PORT", "8090") or 0),

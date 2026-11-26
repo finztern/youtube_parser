@@ -63,12 +63,16 @@ class Pipeline:
             self.stats.inc("queue_drop")
         return True
 
-    def _proxy(self) -> str | None:
-        return self.pool.pick() if self.proxy == "pool" and self.pool else (self.proxy or None)
-
     async def _check(self, urls: list[str]) -> set[str] | None:
-        for _ in range(self.attempts):
-            proxy = self._proxy()
+        """One batch, up to `attempts` tries, each through a different one of the two fastest nodes (failover)."""
+        if self.proxy == "pool":
+            proxies = self.pool.fastest(2) if self.pool else []
+            if not proxies:
+                return None
+        else:
+            proxies = [self.proxy or None]
+        for i in range(self.attempts):
+            proxy = proxies[i % len(proxies)]
             try:
                 async with AsyncSession(impersonate="chrome", timeout=15, proxies={"http": proxy, "https": proxy} if proxy else None) as session:
                     r = await session.post(self.endpoint, json={"urls": urls})
