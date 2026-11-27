@@ -1,8 +1,8 @@
 youtube:
-  workers: 200
+  workers: 400
   hot_interval: 15          # seconds between polls of one hot video
   cold_hours: 6             # a video with no fresh comments, or whose comments the network already knows, is not polled for this long
-  min_new_ratio: 0.1        # ...known = share of NEW comments below this after 3 url-checks
+  min_new_ratio: 0.25       # ...known = share of NEW comments below this after 3 url-checks
   hot_min_gain: 1.0         # video stays hot while it gives >= this many new comments per poll
   explore_share: 0.7        # max share of explore polls; the real share adapts to fresh-per-MB of explore vs hot (floor: explore_min)
   explore_min: 0.2
