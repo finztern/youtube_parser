@@ -50,20 +50,26 @@ class Sender:
             await asyncio.sleep(1 + attempt * 2)
         self.stats.inc("send_failed", len(batch))
 
+    async def _worker(self, client: httpx.AsyncClient) -> None:
+        while True:
+            size = min(self.size, max(1, math.ceil(self.rate))) if self.rate else self.size
+            batch = [await self.q.get()]
+            try:
+                while len(batch) < size:
+                    batch.append(await asyncio.wait_for(self.q.get(), timeout=2.0))
+            except asyncio.TimeoutError:
+                pass
+            if self.rate:  # shared steady pace across workers, no catch-up bursts
+                now = time.monotonic()
+                self._next_at = max(self._next_at, now)
+                wait, self._next_at = self._next_at - now, self._next_at + len(batch) / self.rate
+                if wait > 0:
+                    await asyncio.sleep(wait)
+            await self._post(client, batch)
+
     async def run(self) -> None:
-        next_at = 0.0
-        async with httpx.AsyncClient(timeout=20) as client:
-            while True:
-                size = min(self.size, max(1, math.ceil(self.rate))) if self.rate else self.size
-                batch = [await self.q.get()]
-                try:
-                    while len(batch) < size:
-                        batch.append(await asyncio.wait_for(self.q.get(), timeout=2.0))
-                except asyncio.TimeoutError:
-                    pass
-                if self.rate:  # steady pace, no catch-up bursts
-                    now = time.monotonic()
-                    if next_at > now:
-                        await asyncio.sleep(next_at - now)
-                    next_at = max(next_at, time.monotonic()) + len(batch) / self.rate
-                await self._post(client, batch)
+        self._next_at = 0.0
+        n = max(1, int(self.yt.get("send_workers", 4)))
+        limits = httpx.Limits(max_connections=n * 2)
+        async with httpx.AsyncClient(timeout=20, limits=limits) as client:
+            await asyncio.gather(*(self._worker(client) for _ in range(n)))
