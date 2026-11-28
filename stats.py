@@ -30,4 +30,9 @@ class Stats:
                 pool.live_count(), len(pool.proxies), d("bytes") * 8 / 1e6 / dt,
                 len(hot.hot), len(hot.videos), hot.pacer.current, len(pipeline.seen), d("url_unverified"), d("send_failed"), pipeline.q.qsize(), d("queue_drop"),
             )
+            ages = []
+            for b in ("5m", "30m", "2h", "6h", "23h"):
+                n = d(f"age_all_{b}")
+                ages.append(f"{b} {100 * d(f'age_new_{b}') / n:.0f}%/{n}" if n else f"{b} -")
+            log.info("new%% by comment age (new%%/checked): %s", " | ".join(ages))
             last, t_last = Counter(c), now

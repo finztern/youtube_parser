@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime
 
 from curl_cffi.requests import AsyncSession
 
@@ -28,6 +29,16 @@ class SeenCache:
 
     def __len__(self) -> int:
         return len(self.d)
+
+
+AGE_BUCKETS = (("5m", 300), ("30m", 1800), ("2h", 7200), ("6h", 21600), ("23h", 1 << 30))
+
+
+def age_bucket(item: dict) -> str:
+    """Age of the comment at collection time, as a bucket label (stats only)."""
+    f = "%Y-%m-%dT%H:%M:%SZ"
+    age = (datetime.strptime(item["collected_at"], f) - datetime.strptime(item["created_at"], f)).total_seconds()
+    return next(b for b, lim in AGE_BUCKETS if age <= lim)
 
 
 class Pipeline:
@@ -101,6 +112,10 @@ class Pipeline:
             per: dict[str, list[int]] = {}
             for item in batch:
                 is_new = item["url"] not in known
+                bk = age_bucket(item)
+                self.stats.inc(f"age_all_{bk}")
+                if is_new:
+                    self.stats.inc(f"age_new_{bk}")
                 c = per.setdefault(item["url"].partition("v=")[2].partition("&")[0], [0, 0])
                 c[0] += is_new
                 c[1] += 1

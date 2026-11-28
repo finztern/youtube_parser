@@ -49,3 +49,8 @@ def test_url_check_failover(monkeypatch):
     p = dedup.Pipeline(cfg, Stats(), None, mkpool())
     p._k = -1  # first rotation starts at the fastest node
     assert asyncio.run(p._check(["u1"])) == {"u1"} and FakeSession.calls == ["a", "c"]
+
+
+def test_age_bucket():
+    mk = lambda c: {"created_at": c, "collected_at": "2026-01-01T12:00:00Z"}  # noqa: E731
+    assert [dedup.age_bucket(mk(c)) for c in ("2026-01-01T11:58:00Z", "2026-01-01T11:00:00Z", "2026-01-01T07:00:00Z", "2025-12-31T20:00:00Z")] == ["5m", "2h", "6h", "23h"]
