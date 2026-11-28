@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -150,3 +151,11 @@ def parse_page(text: str, video_id: str, exact_keys: list[str] | None = None) ->
 def parse_watch(text: str) -> tuple[dict[str, int], str | None]:
     """(related videos {id: age s}, comments token) of a watch response; runs in a worker process."""
     return related_videos(text), first_token(text)
+
+
+def low_priority() -> None:
+    """Worker-process initializer: parsing yields the CPU to the event loop (HTTP/queues)."""
+    try:
+        os.nice(10)
+    except OSError:
+        pass

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from client import HEADERS, YtError, new_session, post_next
 from hotlist import HotList, Video
 from mapper import build_item
-from parse import NEWEST_RE, parse_page, parse_watch
+from parse import NEWEST_RE, low_priority, parse_page, parse_watch
 
 log = logging.getLogger("explorer")
 
@@ -21,7 +21,7 @@ class Explorer:
     def __init__(self, cfg: dict, pool, hot: HotList, pipeline, stats) -> None:
         self.yt, self.pool, self.hot, self.pipe, self.stats = cfg["youtube"], pool, hot, pipeline, stats
         # JSON parsing is CPU-bound: it runs in worker processes so the event loop (HTTP, queues) is not starved
-        self.procs = ProcessPoolExecutor(max_workers=max(1, int(self.yt.get("parse_procs", 4))), mp_context=multiprocessing.get_context("spawn"))
+        self.procs = ProcessPoolExecutor(max_workers=max(1, int(self.yt.get("parse_procs", 4))), mp_context=multiprocessing.get_context("spawn"), initializer=low_priority)
         self.reload()
 
     async def _run(self, fn, *args):
