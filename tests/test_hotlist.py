@@ -49,3 +49,11 @@ def test_cold_repoll_without_fresh_is_chilled():
     h.update(c, 0)
     h.update(c, 0)
     assert c.cold_until > 0 and c not in h.hot
+
+
+def test_gc_drops_evicted_unpolled():
+    h = HotList({"explore_max": 100, "max_videos": 200}, Pacer(30))
+    for i in range(190):
+        h.add(f"rel{i:08d}")  # 90 of them fall out of the bounded queue
+    h.gc()
+    assert len(h.videos) == 100 and all(v in h.explore for v in h.videos)

@@ -138,10 +138,11 @@ class HotList:
 
     def gc(self) -> None:
         """Keep memory bounded: over the cap drop dead videos, then the coldest polled ones."""
-        if len(self.videos) <= self.max_videos * 0.9:
+        if len(self.videos) <= self.max_videos * 0.5:
             return
-        drop = [v for v in self.videos.values() if v.dead]
-        if len(self.videos) - len(drop) > self.max_videos * 0.9:
+        queued = set(self.explore_fresh) | set(self.explore)
+        drop = [v for v in self.videos.values() if v.dead or (not v.polls and v.vid not in queued)]  # dead, or evicted from the bounded queues and never polled
+        if len(self.videos) - len(drop) > self.max_videos * 0.8:
             cold = sorted((v for v in self.videos.values() if v.polls and v not in self.hot and not v.dead), key=lambda x: x.last_poll)
             drop += cold[: len(cold) // 2]
         for v in drop:
