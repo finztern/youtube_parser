@@ -41,11 +41,13 @@ class Pipeline:
         self.workers = int(yt.get("url_check_workers", 2))
         self.seen = SeenCache(float(yt.get("seen_ttl_hours", 72)) * 3600)
         self.q: asyncio.Queue = asyncio.Queue(maxsize=50_000)
+        self._k = 0
         self.reload()
 
     def reload(self) -> None:
         self.batch = int(self.yt.get("url_check_batch", 150))
         self.attempts = max(1, int(self.yt.get("url_check_attempts", 1)))
+        self.spread = max(2, int(self.yt.get("url_check_nodes", 8)))  # url-check is spread over this many fastest nodes
         self.seen.ttl = float(self.yt.get("seen_ttl_hours", 72)) * 3600
 
     def wants_more(self) -> bool:
@@ -64,11 +66,13 @@ class Pipeline:
         return True
 
     async def _check(self, urls: list[str]) -> set[str] | None:
-        """One batch, up to `attempts` tries, each through a different one of the two fastest nodes (failover)."""
+        """One batch, up to `attempts` tries, each through a different one of the fastest nodes (failover)."""
         if self.proxy == "pool":
-            proxies = self.pool.fastest(2) if self.pool else []
+            proxies = self.pool.fastest(self.spread) if self.pool else []
             if not proxies:
                 return None
+            self._k += 1
+            proxies = proxies[self._k % len(proxies):] + proxies[:self._k % len(proxies)]  # rotate: spread load, failover on the next node
         else:
             proxies = [self.proxy or None]
         for i in range(self.attempts):

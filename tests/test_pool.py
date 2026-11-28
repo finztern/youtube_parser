@@ -47,4 +47,5 @@ def test_url_check_failover(monkeypatch):
     monkeypatch.setattr(dedup, "AsyncSession", FakeSession)
     cfg = {"youtube": {"url_check_attempts": 2}, "env": {"url_check_endpoint": "http://x", "url_check_proxy": "pool"}}
     p = dedup.Pipeline(cfg, Stats(), None, mkpool())
+    p._k = -1  # first rotation starts at the fastest node
     assert asyncio.run(p._check(["u1"])) == {"u1"} and FakeSession.calls == ["a", "c"]
