@@ -21,7 +21,7 @@ youtube:
   url_check_attempts: 2        # url-check: 1st try via the fastest node, 2nd via the second fastest
   url_check_batch: 200      # urls per url-check request (100-200)
   url_check_workers: 16
-  send_workers: 16          # parallel POSTs to STORE_ENDPOINT (restart)
+  send_workers: 40          # parallel POSTs to STORE_ENDPOINT (restart)
   seen_ttl_hours: 72
   parent_toplevel_mode: self   # self | null
   exact_time_keys: []       # fill after tools/yt_time_probe.py finds an absolute timestamp key
