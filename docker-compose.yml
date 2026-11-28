@@ -2,7 +2,7 @@ services:
   youtube-parser:
     build: .
     env_file: .env
-    cpus: ${CPU_LIMIT:-3}   # hard CPU cap of the container (cores)
+    cpus: ${CPU_LIMIT:-2}   # hard CPU cap of the container (cores)
     extra_hosts:
       - "host.docker.internal:host-gateway"   # STORE_ENDPOINT on the host: http://host.docker.internal:PORT/path
     volumes:

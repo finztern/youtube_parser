@@ -21,10 +21,13 @@ class Explorer:
     def __init__(self, cfg: dict, pool, hot: HotList, pipeline, stats) -> None:
         self.yt, self.pool, self.hot, self.pipe, self.stats = cfg["youtube"], pool, hot, pipeline, stats
         # JSON parsing is CPU-bound: it runs in worker processes so the event loop (HTTP, queues) is not starved
-        self.procs = ProcessPoolExecutor(max_workers=max(1, int(self.yt.get("parse_procs", 4))), mp_context=multiprocessing.get_context("spawn"), initializer=low_priority)
+        n = int(self.yt.get("parse_procs", 4))  # 0 = parse in the event loop (single thread, lowest CPU)
+        self.procs = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn"), initializer=low_priority) if n > 0 else None
         self.reload()
 
     async def _run(self, fn, *args):
+        if self.procs is None:
+            return fn(*args)
         return await asyncio.get_running_loop().run_in_executor(self.procs, fn, *args)
 
     def reload(self) -> None:
