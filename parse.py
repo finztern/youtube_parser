@@ -140,3 +140,13 @@ def related_videos(text: str) -> dict[str, int]:
 
     walk(data)
     return out
+
+
+def parse_page(text: str, video_id: str, exact_keys: list[str] | None = None) -> tuple[list[Comment] | None, list[str]]:
+    """(comments, continuation tokens) of one comments page; runs in a worker process."""
+    return parse_comments(text, video_id, exact_keys), NEXT_RE.findall(text)
+
+
+def parse_watch(text: str) -> tuple[dict[str, int], str | None]:
+    """(related videos {id: age s}, comments token) of a watch response; runs in a worker process."""
+    return related_videos(text), first_token(text)

@@ -21,6 +21,7 @@ youtube:
   url_check_attempts: 2        # url-check: 1st try via the fastest node, 2nd via the second fastest
   url_check_batch: 200      # urls per url-check request (100-200)
   url_check_workers: 16
+  parse_procs: 4            # worker processes for JSON parsing (restart)
   send_workers: 40          # parallel POSTs to STORE_ENDPOINT (restart)
   seen_ttl_hours: 72
   parent_toplevel_mode: self   # self | null

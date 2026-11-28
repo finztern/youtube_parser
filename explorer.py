@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import multiprocessing
 import re
 import time
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 
 from client import HEADERS, YtError, new_session, post_next
 from hotlist import HotList, Video
 from mapper import build_item
-from parse import NEWEST_RE, NEXT_RE, first_token, parse_comments, related_videos
+from parse import NEWEST_RE, parse_page, parse_watch
 
 log = logging.getLogger("explorer")
 
@@ -18,7 +20,12 @@ log = logging.getLogger("explorer")
 class Explorer:
     def __init__(self, cfg: dict, pool, hot: HotList, pipeline, stats) -> None:
         self.yt, self.pool, self.hot, self.pipe, self.stats = cfg["youtube"], pool, hot, pipeline, stats
+        # JSON parsing is CPU-bound: it runs in worker processes so the event loop (HTTP, queues) is not starved
+        self.procs = ProcessPoolExecutor(max_workers=max(1, int(self.yt.get("parse_procs", 4))), mp_context=multiprocessing.get_context("spawn"))
         self.reload()
+
+    async def _run(self, fn, *args):
+        return await asyncio.get_running_loop().run_in_executor(self.procs, fn, *args)
 
     def reload(self) -> None:
         self.max_pages = int(self.yt.get("max_pages", 3))
@@ -52,12 +59,12 @@ class Explorer:
         self._last_seed = time.monotonic()
         log.info("seed videos: %d", len(self.hot.videos))
 
-    def _take(self, text: str, v: Video) -> tuple[int, int]:
-        """(comments in response, new accepted comments)."""
-        comments = parse_comments(text, v.vid, self.exact_keys)
+    async def _take(self, text: str, v: Video) -> tuple[int, int, list[str]]:
+        """(comments in response, new accepted comments, continuation tokens)."""
+        comments, nxt = await self._run(parse_page, text, v.vid, self.exact_keys)
         if comments is None:
             self.stats.inc("parse_fail")
-            return 0, 0
+            return 0, 0, nxt
         now, new = datetime.now(timezone.utc), 0
         for c in comments:
             self.stats.inc("received")
@@ -67,7 +74,7 @@ class Explorer:
             elif self.pipe.offer(item):
                 new += 1
                 self.stats.inc("fresh")
-        return len(comments), new
+        return len(comments), new, nxt
 
     async def _post(self, session, payload: dict, acc: list[int]) -> str:
         text, size = await post_next(session, payload)
@@ -86,13 +93,13 @@ class Explorer:
     async def _poll(self, session, v: Video, kind: str, acc: list[int]) -> None:
         if v.token is None:  # bootstrap: related videos + comments token, then the "Newest" token
             text = await self._post(session, {"videoId": v.vid}, acc)
-            for found, age in related_videos(text).items():
+            related, token = await self._run(parse_watch, text)
+            for found, age in related.items():
                 if age <= self.rel_max_age_s:
                     self.hot.add(found, fresh=True)
                     self.stats.inc("rel_fresh")
                 else:
                     self.stats.inc("skip_rel_old")
-            token = first_token(text)
             if not token:
                 v.dead = True
                 self.stats.inc("no_comments")
@@ -109,7 +116,7 @@ class Explorer:
             except YtError:
                 v.token = None
                 raise
-            total, new = self._take(text, v)
+            total, new, nxt = await self._take(text, v)
             if page == 0 and total == 0:
                 v.token = None  # stale token or no comments: bootstrap is expensive, do not repeat it soon
                 self.hot.chill(v)
@@ -117,7 +124,6 @@ class Explorer:
                 return
             fresh_total += new
             acc[1] += new
-            nxt = NEXT_RE.findall(text)
             if not nxt or new < gain * total:
                 break  # the rest of the list is older or already seen
             token = nxt[-1]

@@ -48,6 +48,7 @@ async def amain() -> None:
     for t in tasks:
         t.cancel()
     pool.close()
+    explorer.procs.shutdown(wait=False, cancel_futures=True)
 
 
 if __name__ == "__main__":
